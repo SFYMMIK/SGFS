@@ -1,8 +1,11 @@
 #ifndef SGFS_H
 #define SGFS_H
 
-#define SGFS_MAGIC 0x53474653
-#define SGFS_VERSION 1
+#include <stdint.h>  // Include for uint32_t, uint16_t, etc.
+
+// Define the SGFS magic number and version
+#define SGFS_MAGIC 0x53474653  // "SGFS" in hexadecimal
+#define SGFS_VERSION 1         // Version number of the filesystem
 
 // Superblock definition
 struct sgfs_superblock {
