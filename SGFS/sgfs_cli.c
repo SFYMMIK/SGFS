@@ -1,114 +1,62 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>  // For geteuid()
+#include <unistd.h>
 #include <fcntl.h>
-#include <stdint.h>  // For uint32_t, etc.
+#include <stdint.h>
+#include <sys/ioctl.h>
+#include <sys/mount.h>   // For mounting functions
+#include <sys/stat.h>    // For filesystem creation
+#include <errno.h>
+#include <sys/types.h>
+
 #include "sgfs.h"
-#include <sys/wait.h>  // For handling system commands
 
-#define GPT_HEADER_SIGNATURE 0x5452415020494645ULL  // "EFI PART"
-#define GPT_REVISION 0x00010000
-#define GPT_ENTRY_SIZE 128
-#define GPT_ENTRIES 128
+// Forward declaration of format_disk function
+void format_disk(const char* disk, uint32_t block_size);
 
-// Function to check if the program is running as root
-void check_root() {
-    if (geteuid() != 0) {
-        fprintf(stderr, "This program must be run as root. Please use sudo.\n");
-        exit(EXIT_FAILURE);
+// Mount point path for SGFS
+const char* SGFS_MOUNT_POINT = "/mnt/sgfs";
+
+// Function to get the size of the device using ioctl
+uint64_t get_device_size(int fd) {
+    uint64_t size;
+    if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
+        perror("Failed to get device size");
+        return 0;
     }
+    return size;
 }
 
-// GPT Header structure
-struct gpt_header {
-    uint64_t signature;
-    uint32_t revision;
-    uint32_t header_size;
-    uint32_t header_crc32;
-    uint32_t reserved;
-    uint64_t current_lba;
-    uint64_t backup_lba;
-    uint64_t first_usable_lba;
-    uint64_t last_usable_lba;
-    uint8_t disk_guid[16];
-    uint64_t partition_entry_lba;
-    uint32_t num_partition_entries;
-    uint32_t partition_entry_size;
-    uint32_t partition_entries_crc32;
-};
-
-// GPT Partition Entry structure
-struct gpt_partition_entry {
-    uint8_t partition_type_guid[16];
-    uint8_t unique_partition_guid[16];
-    uint64_t first_lba;
-    uint64_t last_lba;
-    uint64_t attributes;
-    uint8_t partition_name[72];  // UTF-16 partition name (36 characters)
-};
-
-// Function to create a GPT partition table
-void create_gpt_partition_table(int fd, uint64_t disk_size) {
-    struct gpt_header gpt;
-    struct gpt_partition_entry partition;
-
-    // Initialize the GPT header
-    memset(&gpt, 0, sizeof(gpt));
-    gpt.signature = GPT_HEADER_SIGNATURE;
-    gpt.revision = GPT_REVISION;
-    gpt.header_size = sizeof(gpt);
-    gpt.current_lba = 1;
-    gpt.backup_lba = disk_size - 1;
-    gpt.first_usable_lba = 34;
-    gpt.last_usable_lba = disk_size - 34;
-    gpt.partition_entry_lba = 2;  // Partition entry array starts at LBA 2
-    gpt.num_partition_entries = GPT_ENTRIES;
-    gpt.partition_entry_size = GPT_ENTRY_SIZE;
-
-    // Write the GPT header to the disk at LBA 1
-    lseek(fd, 512, SEEK_SET);  // LBA 1 starts at byte offset 512 (512 bytes per sector)
-    if (write(fd, &gpt, sizeof(gpt)) != sizeof(gpt)) {
-        perror("Failed to write GPT header");
+// Function to allocate blocks by writing one block at a time
+void allocate_blocks(int fd, uint64_t size, uint32_t block_size) {
+    uint8_t* zero_block = (uint8_t*)calloc(1, block_size);
+    if (!zero_block) {
+        perror("Failed to allocate memory for zero block");
         exit(1);
     }
 
-    // Initialize the first partition (SGFS partition)
-    memset(&partition, 0, sizeof(partition));
-    partition.first_lba = 34;  // First usable LBA after GPT
-    partition.last_lba = gpt.last_usable_lba;
+    uint64_t total_blocks = size / block_size;  // Calculate total number of blocks
+    printf("Starting block allocation (%lu total blocks)...\n", total_blocks);
 
-    // Write the partition entry array to the disk at LBA 2
-    lseek(fd, 512 * 2, SEEK_SET);  // LBA 2 starts at byte offset 1024
-    if (write(fd, &partition, sizeof(partition)) != sizeof(partition)) {
-        perror("Failed to write partition entry array");
-        exit(1);
+    for (uint64_t i = 0; i < total_blocks; i++) {
+        if (write(fd, zero_block, block_size) != block_size) {
+            perror("Failed to write block");
+            free(zero_block);
+            exit(1);
+        }
+        // Print progress every 1000 blocks for better tracking
+        if (i % 1000 == 0) {
+            printf("Allocated %lu/%lu blocks...\n", i, total_blocks);
+        }
     }
 
-    // Write backup GPT header (optional)
-    lseek(fd, (disk_size - 1) * 512, SEEK_SET);  // Backup GPT at last LBA
-    if (write(fd, &gpt, sizeof(gpt)) != sizeof(gpt)) {
-        perror("Failed to write backup GPT header");
-        exit(1);
-    }
+    printf("Block allocation completed.\n");
+    free(zero_block);
 }
 
-// Function to format the disk with SGFS
-void format_disk(const char* disk, uint32_t block_size, uint32_t total_blocks) {
-    int fd = open(disk, O_RDWR);
-    if (fd < 0) {
-        perror("Failed to open disk");
-        exit(1);
-    }
-
-    // Determine disk size (in LBAs)
-    uint64_t disk_size = total_blocks;
-
-    // Create GPT partition table
-    create_gpt_partition_table(fd, disk_size);
-
-    // Now format the partition with SGFS
-    // Initialize the superblock
+// Function to write SGFS superblock
+void write_sgfs_superblock(int fd, uint32_t block_size, uint32_t total_blocks) {
     struct sgfs_superblock sb;
     sb.magic = SGFS_MAGIC;
     sb.version = SGFS_VERSION;
@@ -125,80 +73,136 @@ void format_disk(const char* disk, uint32_t block_size, uint32_t total_blocks) {
     sb.inode_table_start = sb.inode_bitmap_start + (total_blocks / 8);
     sb.data_block_start = sb.inode_table_start + sb.total_inodes;
 
-    // Write superblock
+    printf("Writing SGFS superblock...\n");
+    lseek(fd, 34 * block_size, SEEK_SET);  // Write superblock at the start of the partition
     if (write(fd, &sb, sizeof(sb)) != sizeof(sb)) {
-        perror("Failed to write superblock");
-        close(fd);
+        perror("Failed to write SGFS superblock");
         exit(1);
     }
 
-    // Initialize block and inode bitmaps (set everything to free)
-    uint8_t bitmap[block_size];
-    memset(bitmap, 0, block_size);  // Clear the bitmap (all blocks are free)
+    printf("Superblock written successfully.\n");
+}
 
-    // Write block bitmap
-    for (uint32_t i = sb.block_bitmap_start; i < sb.inode_bitmap_start; i++) {
-        if (write(fd, bitmap, block_size) != block_size) {
-            perror("Failed to write block bitmap");
-            close(fd);
+// Function to simulate syncing data in chunks with progress
+void sync_data_with_progress(int fd, uint64_t total_size, uint32_t block_size) {
+    uint64_t synced_size = 0;
+    uint64_t chunk_size = block_size * 1024;  // Sync in chunks of 1024 blocks at a time
+    uint64_t total_chunks = total_size / chunk_size;
+
+    printf("Syncing data to disk...\n");
+
+    for (uint64_t i = 0; i < total_chunks; i++) {
+        // Simulate syncing a chunk of data
+        fsync(fd);  // Sync data after each chunk
+        synced_size += chunk_size;
+        printf("Synced %lu/%lu bytes...\n", synced_size, total_size);
+    }
+
+    // Handle any remaining data (if total_size is not a multiple of chunk_size)
+    if (synced_size < total_size) {
+        fsync(fd);  // Final sync for remaining data
+        printf("Synced %lu/%lu bytes...\n", total_size, total_size);
+    }
+
+    printf("Data sync completed.\n");
+}
+
+// Function to check if mount point exists, if not, create it
+void ensure_mount_point_exists() {
+    struct stat st = {0};
+
+    if (stat(SGFS_MOUNT_POINT, &st) == -1) {
+        printf("Creating mount point at %s...\n", SGFS_MOUNT_POINT);
+        if (mkdir(SGFS_MOUNT_POINT, 0755) != 0) {
+            perror("Failed to create mount point");
             exit(1);
         }
     }
+}
 
-    // Write inode bitmap
-    for (uint32_t i = sb.inode_bitmap_start; i < sb.inode_table_start; i++) {
-        if (write(fd, bitmap, block_size) != block_size) {
-            perror("Failed to write inode bitmap");
-            close(fd);
-            exit(1);
-        }
+// Function to mount the SGFS disk
+void mount_disk(const char* disk) {
+    ensure_mount_point_exists();
+
+    printf("Mounting %s to %s...\n", disk, SGFS_MOUNT_POINT);
+
+    // Replace "sgfs" with the actual filesystem type you register
+    if (mount(disk, SGFS_MOUNT_POINT, "sgfs", 0, NULL) == -1) {
+        perror("Failed to mount SGFS disk");
+        exit(1);
     }
 
-    // Zero out inode table (clear all inodes)
-    struct sgfs_inode empty_inode = {0};
-    for (uint32_t i = sb.inode_table_start; i < sb.data_block_start; i++) {
-        if (write(fd, &empty_inode, sizeof(empty_inode)) != sizeof(empty_inode)) {
-            perror("Failed to write inode table");
-            close(fd);
-            exit(1);
-        }
+    printf("Mounted %s to %s successfully.\n", disk, SGFS_MOUNT_POINT);
+}
+
+// Function to unmount the disk (clear the mount status)
+void unmount_disk() {
+    printf("Unmounting disk from %s...\n", SGFS_MOUNT_POINT);
+
+    if (umount(SGFS_MOUNT_POINT) == -1) {
+        perror("Failed to unmount SGFS disk");
+        exit(1);
     }
 
-    printf("Disk %s formatted with SGFS (block size: %u, total blocks: %u).\n", disk, block_size, total_blocks);
-    close(fd);
+    printf("Disk unmounted from %s successfully.\n", SGFS_MOUNT_POINT);
 }
 
 // Main function to handle commands
 int main(int argc, char* argv[]) {
-    // Ensure the program is run with sudo/root privileges
-    check_root();
-
     if (argc < 2) {
-        printf("Usage: sgfs_cli <command> <device> [block_size] [total_blocks]\n");
+        printf("Usage: sgfs_cli <command> <device>\n");
         return 1;
     }
 
     // Command handling logic
     if (strcmp(argv[1], "m") == 0 && argc == 3) {
+        // Mount the disk
         mount_disk(argv[2]);
-    } else if (strcmp(argv[1], "im") == 0) {
-        char* disk = get_mounted_disk();
-        if (disk) {
-            printf("Mounted disk: %s\n", disk);
-        } else {
-            printf("No disk is currently mounted.\n");
-        }
-    } else if (strcmp(argv[1], "mdd") == 0 && argc == 3) {
+    } else if (strcmp(argv[1], "mdd") == 0) {
+        // Unmount the disk
         unmount_disk();
-        mount_disk(argv[2]);
     } else if (strcmp(argv[1], "f") == 0 && argc == 5) {
+        // Format the disk
         const char* disk = argv[2];
         uint32_t block_size = atoi(argv[3]);
-        uint32_t total_blocks = atoi(argv[4]);
-        format_disk(disk, block_size, total_blocks);
+        format_disk(disk, block_size);
     } else {
         printf("Unknown command or incorrect arguments.\n");
     }
 
     return 0;
+}
+
+// Function to format the disk with SGFS
+void format_disk(const char* disk, uint32_t block_size) {
+    int fd = open(disk, O_RDWR);
+    if (fd < 0) {
+        perror("Failed to open disk");
+        exit(1);
+    }
+
+    // Get the size of the device
+    uint64_t device_size = get_device_size(fd);
+    if (device_size == 0) {
+        close(fd);
+        exit(1);
+    }
+    uint32_t total_blocks = device_size / block_size;
+
+    printf("Starting formatting of %s with SGFS...\n", disk);
+    printf("Total disk size: %lu bytes (%u blocks, block size: %u bytes)\n", device_size, total_blocks, block_size);
+
+    // Allocate blocks on the disk (one block at a time)
+    allocate_blocks(fd, device_size, block_size);
+
+    // Write the SGFS superblock
+    write_sgfs_superblock(fd, block_size, total_blocks);
+
+    // Simulate syncing data to disk with progress
+    sync_data_with_progress(fd, device_size, block_size);
+
+    // Close the file descriptor
+    close(fd);
+
+    printf("Disk %s formatted with SGFS successfully.\n", disk);
 }

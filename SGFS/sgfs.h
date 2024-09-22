@@ -1,31 +1,33 @@
 #ifndef SGFS_H
 #define SGFS_H
 
-#include <stdint.h>  // Include for uint32_t, uint16_t, etc.
+#include <stdint.h>
 
-// Define the SGFS magic number and version
-#define SGFS_MAGIC 0x53474653  // "SGFS" in hexadecimal
-#define SGFS_VERSION 1         // Version number of the filesystem
+// Magic number to identify the SGFS filesystem
+#define SGFS_MAGIC 0x53474653  // "SGFS" in ASCII
 
-// Superblock definition
+// Version number of SGFS
+#define SGFS_VERSION 1
+
+// Structure of the SGFS superblock
 struct sgfs_superblock {
-    uint32_t magic;
-    uint32_t version;
+    uint32_t magic;            // Magic number identifying the filesystem
+    uint32_t version;          // Version of SGFS
     uint32_t block_size;       // Size of each block
     uint32_t inode_size;       // Size of each inode
-    uint32_t total_blocks;     // Total number of blocks in the FS
-    uint32_t total_inodes;     // Total number of inodes in the FS
+    uint32_t total_blocks;     // Total number of blocks in the filesystem
+    uint32_t total_inodes;     // Total number of inodes
     uint32_t free_blocks;      // Number of free blocks
     uint32_t free_inodes;      // Number of free inodes
-    uint32_t journal_start;    // Start of journal
-    uint32_t block_bitmap_start; // Start of block bitmap
-    uint32_t inode_bitmap_start; // Start of inode bitmap
-    uint32_t inode_table_start;  // Start of inode table
-    uint32_t data_block_start;   // Start of data blocks
-    uint32_t journal_size;      // Size of journaling area
+    uint32_t journal_start;    // Start of the journal
+    uint32_t block_bitmap_start; // Start of the block bitmap
+    uint32_t inode_bitmap_start; // Start of the inode bitmap
+    uint32_t inode_table_start;  // Start of the inode table
+    uint32_t data_block_start;   // Start of the data blocks
+    uint32_t journal_size;      // Size of the journaling area
 };
 
-// Inode structure for files and directories
+// Structure of an inode in SGFS
 struct sgfs_inode {
     uint32_t inode_number;    // Inode number
     uint32_t file_size;       // Size of the file in bytes
@@ -39,4 +41,4 @@ struct sgfs_inode {
     uint32_t access_time;     // Last access time
 };
 
-#endif
+#endif // SGFS_H

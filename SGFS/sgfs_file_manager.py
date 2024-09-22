@@ -1,6 +1,9 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileSystemModel, QTreeView, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QMessageBox
-from PyQt5.QtCore import Qt
+import os
+import shutil
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileSystemModel, QTreeView, QVBoxLayout, QWidget, QPushButton, QLabel, QFileDialog, QMessageBox, QMenu, QAction
+from PyQt5.QtCore import Qt, QDir, QMimeData, QModelIndex
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 import subprocess
 
 # Backend functions for SGFS operations
@@ -9,7 +12,7 @@ def mount_sgfs(disk):
     return result.stdout.decode('utf-8')
 
 def unmount_sgfs():
-    result = subprocess.run(['./sgfs_cli', 'mdd', 'none'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(['./sgfs_cli', 'mdd'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return result.stdout.decode('utf-8')
 
 def format_sgfs(disk):
@@ -24,13 +27,17 @@ class SGFSFileManager(QMainWindow):
 
         # File system model
         self.model = QFileSystemModel()
-        self.model.setRootPath('/')
+        self.model.setRootPath('/mnt/sgfs')  # Mount point for SGFS
 
         # Tree view for browsing
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index('/'))
+        self.tree.setRootIndex(self.model.index('/mnt/sgfs'))
         self.tree.setColumnWidth(0, 250)
+
+        # Set tree view to accept drops
+        self.tree.setAcceptDrops(True)
+        self.tree.setDragDropMode(QTreeView.DropOnly)
 
         # Status label to show mounted disk
         self.status_label = QLabel("No SGFS disk mounted.")
@@ -45,6 +52,10 @@ class SGFSFileManager(QMainWindow):
         self.unmount_button.clicked.connect(self.unmount_disk)
         self.format_button.clicked.connect(self.format_disk)
 
+        # Right-click menu for deleting files
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.open_menu)
+
         # Layout
         layout = QVBoxLayout()
         layout.addWidget(self.tree)
@@ -58,17 +69,44 @@ class SGFSFileManager(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
+    def open_menu(self, position):
+        indexes = self.tree.selectedIndexes()
+        if len(indexes) > 0:
+            menu = QMenu()
+
+            delete_action = QAction("Delete", self)
+            delete_action.triggered.connect(self.delete_selected)
+            menu.addAction(delete_action)
+
+            menu.exec_(self.tree.viewport().mapToGlobal(position))
+
+    def delete_selected(self):
+        index = self.tree.currentIndex()
+        file_path = self.model.filePath(index)
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            QMessageBox.information(self, "File Deleted", f"{file_path} deleted.")
+        else:
+            QMessageBox.warning(self, "Error", f"Could not delete {file_path}")
+
     def mount_disk(self):
         """Mount SGFS disk"""
         disk, _ = QFileDialog.getOpenFileName(self, "Select Disk", "/dev", "All Files (*)")
         if disk:
             output = mount_sgfs(disk)
             self.status_label.setText(output)
+            # Refresh model to show mounted disk
+            self.model.setRootPath('/mnt/sgfs')
+            self.tree.setRootIndex(self.model.index('/mnt/sgfs'))
 
     def unmount_disk(self):
         """Unmount SGFS disk"""
         output = unmount_sgfs()
         self.status_label.setText(output)
+        # Clear the model since the disk is unmounted
+        self.model.setRootPath('/')
+        self.tree.setRootIndex(self.model.index('/'))
 
     def format_disk(self):
         """Format disk with SGFS"""
