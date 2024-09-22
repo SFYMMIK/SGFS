@@ -1,12 +1,99 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <unistd.h>  // For geteuid()
 #include <fcntl.h>
+#include <stdint.h>  // For uint32_t, etc.
 #include "sgfs.h"
+#include <sys/wait.h>  // For handling system commands
 
-// Mount and format operations for SGFS
+#define GPT_HEADER_SIGNATURE 0x5452415020494645ULL  // "EFI PART"
+#define GPT_REVISION 0x00010000
+#define GPT_ENTRY_SIZE 128
+#define GPT_ENTRIES 128
 
+// Function to check if the program is running as root
+void check_root() {
+    if (geteuid() != 0) {
+        fprintf(stderr, "This program must be run as root. Please use sudo.\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+// GPT Header structure
+struct gpt_header {
+    uint64_t signature;
+    uint32_t revision;
+    uint32_t header_size;
+    uint32_t header_crc32;
+    uint32_t reserved;
+    uint64_t current_lba;
+    uint64_t backup_lba;
+    uint64_t first_usable_lba;
+    uint64_t last_usable_lba;
+    uint8_t disk_guid[16];
+    uint64_t partition_entry_lba;
+    uint32_t num_partition_entries;
+    uint32_t partition_entry_size;
+    uint32_t partition_entries_crc32;
+};
+
+// GPT Partition Entry structure
+struct gpt_partition_entry {
+    uint8_t partition_type_guid[16];
+    uint8_t unique_partition_guid[16];
+    uint64_t first_lba;
+    uint64_t last_lba;
+    uint64_t attributes;
+    uint8_t partition_name[72];  // UTF-16 partition name (36 characters)
+};
+
+// Function to create a GPT partition table
+void create_gpt_partition_table(int fd, uint64_t disk_size) {
+    struct gpt_header gpt;
+    struct gpt_partition_entry partition;
+
+    // Initialize the GPT header
+    memset(&gpt, 0, sizeof(gpt));
+    gpt.signature = GPT_HEADER_SIGNATURE;
+    gpt.revision = GPT_REVISION;
+    gpt.header_size = sizeof(gpt);
+    gpt.current_lba = 1;
+    gpt.backup_lba = disk_size - 1;
+    gpt.first_usable_lba = 34;
+    gpt.last_usable_lba = disk_size - 34;
+    gpt.partition_entry_lba = 2;  // Partition entry array starts at LBA 2
+    gpt.num_partition_entries = GPT_ENTRIES;
+    gpt.partition_entry_size = GPT_ENTRY_SIZE;
+
+    // Write the GPT header to the disk at LBA 1
+    lseek(fd, 512, SEEK_SET);  // LBA 1 starts at byte offset 512 (512 bytes per sector)
+    if (write(fd, &gpt, sizeof(gpt)) != sizeof(gpt)) {
+        perror("Failed to write GPT header");
+        exit(1);
+    }
+
+    // Initialize the first partition (SGFS partition)
+    memset(&partition, 0, sizeof(partition));
+    partition.first_lba = 34;  // First usable LBA after GPT
+    partition.last_lba = gpt.last_usable_lba;
+
+    // Write the partition entry array to the disk at LBA 2
+    lseek(fd, 512 * 2, SEEK_SET);  // LBA 2 starts at byte offset 1024
+    if (write(fd, &partition, sizeof(partition)) != sizeof(partition)) {
+        perror("Failed to write partition entry array");
+        exit(1);
+    }
+
+    // Write backup GPT header (optional)
+    lseek(fd, (disk_size - 1) * 512, SEEK_SET);  // Backup GPT at last LBA
+    if (write(fd, &gpt, sizeof(gpt)) != sizeof(gpt)) {
+        perror("Failed to write backup GPT header");
+        exit(1);
+    }
+}
+
+// Function to format the disk with SGFS
 void format_disk(const char* disk, uint32_t block_size, uint32_t total_blocks) {
     int fd = open(disk, O_RDWR);
     if (fd < 0) {
@@ -14,6 +101,13 @@ void format_disk(const char* disk, uint32_t block_size, uint32_t total_blocks) {
         exit(1);
     }
 
+    // Determine disk size (in LBAs)
+    uint64_t disk_size = total_blocks;
+
+    // Create GPT partition table
+    create_gpt_partition_table(fd, disk_size);
+
+    // Now format the partition with SGFS
     // Initialize the superblock
     struct sgfs_superblock sb;
     sb.magic = SGFS_MAGIC;
@@ -74,42 +168,11 @@ void format_disk(const char* disk, uint32_t block_size, uint32_t total_blocks) {
     close(fd);
 }
 
-void mount_disk(const char* disk) {
-    // Logic to mount the disk (for simplicity, just track it)
-    FILE* f = fopen("/tmp/sgfs_mount_status", "w");
-    if (f == NULL) {
-        perror("Failed to open mount status file");
-        return;
-    }
-    fprintf(f, "%s\n", disk);
-    fclose(f);
-    printf("Mounted disk: %s\n", disk);
-}
-
-void unmount_disk() {
-    // Logic to unmount the disk (clear the status file)
-    FILE* f = fopen("/tmp/sgfs_mount_status", "w");
-    if (f == NULL) {
-        perror("Failed to open mount status file");
-        return;
-    }
-    fprintf(f, "none\n");
-    fclose(f);
-    printf("Disk unmounted.\n");
-}
-
-char* get_mounted_disk() {
-    static char disk[64];
-    FILE* f = fopen("/tmp/sgfs_mount_status", "r");
-    if (f == NULL) {
-        return NULL;
-    }
-    fgets(disk, sizeof(disk), f);
-    fclose(f);
-    return disk;
-}
-
+// Main function to handle commands
 int main(int argc, char* argv[]) {
+    // Ensure the program is run with sudo/root privileges
+    check_root();
+
     if (argc < 2) {
         printf("Usage: sgfs_cli <command> <device> [block_size] [total_blocks]\n");
         return 1;
