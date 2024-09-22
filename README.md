@@ -7,18 +7,23 @@ SGFS is a experimental FS made by me, its for my private use but why not share i
 The SGFS CLI tool provides the ability to format, mount, unmount, and manage disks with SGFS, and includes its own logic to create a GPT partition table.
 
 ### Features:
-- **Create GPT Partition Table**: The SGFS CLI uses its own logic to create a GPT partition table on the disk before formatting it with SGFS.
+- **Create SGPT Partition Table**: The SGFS CLI uses its own logic to create a GPT partition table on the disk before formatting it with SGFS.
 - **Format Disk with SGFS**: Formats a disk partition with the SGFS filesystem, including writing the superblock, inode table, and block bitmaps.
 - **Mount/Unmount Disk**: Mount or unmount SGFS disks.
 - **Root Privileges**: The program checks for root privileges and forces the user to run it with `sudo`.
 
 ### Commands:
 - **`m <device>`**: Mount the specified SGFS disk.
-- **`im`**: Show which SGFS disk is currently mounted.
 - **`mdd <device>`**: Unmount the current disk and mount another one.
-- **`f <device> <block_size> <total_blocks>`**: Format the disk with SGFS and a GPT partition table.
+- **`f <device> <block_size>`**: Format the disk with SGFS and a SGPT partition table.
 
 ### Example Usage:
+
+#### Creating The mount Point
+To create the mount point just type this command:
+```bash
+sudo mkdir -p /mnt/sgfs
+```
 
 #### Mounting a Disk
 To mount an SGFS-formatted disk:
