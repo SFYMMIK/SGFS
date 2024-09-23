@@ -1,6 +1,7 @@
 # SGFS
 SGFS is a experimental FS made by me, its for my private use but why not share it, here is the source for the formatter to SGFS and a simple file explorer which can mount SGFS disks and manage them, the explorer is also usable as a normal one.
 
+# Warning!, the folder named 'SGFS_ID' is a folder for the latest but not yet finished updates of SGFS in which i will try to introduce: FUSE, FUSE Operations, Newer Commands, Revert changes to disk (backup files to restore the disk to its original state).
 
 ## SGFS CLI Tool (`sgfs_cli/`)
 
