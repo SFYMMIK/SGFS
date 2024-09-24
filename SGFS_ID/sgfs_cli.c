@@ -15,39 +15,7 @@
 #include <dirent.h>  // For directory operations
 #include <time.h>    // For generating timestamp for the backup filename
 
-#include "sgfs.h"
-
-// SGFS Superblock structure
-struct sgfs_superblock {
-    uint32_t magic;
-    uint32_t version;
-    uint32_t block_size;
-    uint32_t inode_size;
-    uint32_t total_blocks;
-    uint32_t total_inodes;
-    uint32_t free_blocks;
-    uint32_t free_inodes;
-    uint32_t journal_size;
-    uint32_t journal_start;
-    uint32_t block_bitmap_start;
-    uint32_t inode_bitmap_start;
-    uint32_t inode_table_start;
-    uint32_t data_block_start;
-};
-
-// Inode structure
-struct sgfs_inode {
-    uint32_t inode_number;
-    uint32_t file_size;
-    uint16_t file_type;       // 1 = regular file, 2 = directory
-    uint16_t permissions;
-    uint32_t direct_block[12];
-    uint32_t indirect_block;
-    uint32_t double_indirect_block;
-    uint32_t creation_time;
-    uint32_t modification_time;
-    uint32_t access_time;
-};
+#include "sgfs.h"  // Include the header file with structure definitions
 
 // SGPT Header structure
 struct sgpt_header {
