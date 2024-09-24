@@ -46,7 +46,7 @@ void mount_disk(const char* device) {
     ensure_mount_point_exists();
     printf("Mounting SGFS at %s using FUSE...\n", SGFS_MOUNT_POINT);
     char* fuse_argv[] = {
-        "sgfs_cli", SGFS_MOUNT_POINT
+        "sgfs_cli", (char*) SGFS_MOUNT_POINT
     };
     fuse_main(2, fuse_argv, NULL, NULL);
 }
