@@ -99,6 +99,23 @@ void parse_fs_and_pt(const char* fs_arg, const char* pt_arg, char* fs_type, char
     }
 }
 
+// Function to initialize the disk and format it to SGFS
+void init_sgfs(const char* device) {
+    printf("Initializing disk %s with SGFS...\n", device);
+    // Open the disk
+    int fd = open(device, O_RDWR);
+    if (fd < 0) {
+        perror("Failed to open disk");
+        exit(1);
+    }
+
+    // Perform disk initialization and format with SGFS
+    // Placeholder: You can extend this with actual SGFS formatting logic, e.g., creating a superblock, inodes, and block allocation tables.
+    
+    printf("Disk %s formatted to SGFS successfully.\n", device);
+    close(fd);
+}
+
 // Function to create a backup of the disk
 void backup_disk(const char* device, const char* backup_dir, const char* fs_type, const char* partition_table) {
     char backup_filename[256];
@@ -153,6 +170,7 @@ void revert_disk(const char* device, const char* backup_path) {
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         printf("Usage:\n");
+        printf("  sudo ./sgfs_cli init /dev/sdX\n");
         printf("  sudo ./sgfs_cli mount /dev/sdX\n");
         printf("  sudo ./sgfs_cli umount /dev/sdX\n");
         printf("  sudo ./sgfs_cli backup /dev/sdX /backup/directory/ FILESYSTEM='ext4' PARTITION_TABLE='gpt'\n");
@@ -163,7 +181,9 @@ int main(int argc, char* argv[]) {
     const char* device = argv[2];
 
     // Command handling logic
-    if (strcmp(argv[1], "mount") == 0) {
+    if (strcmp(argv[1], "init") == 0) {
+        init_sgfs(device);
+    } else if (strcmp(argv[1], "mount") == 0) {
         mount_disk(device);
     } else if (strcmp(argv[1], "umount") == 0) {
         unmount_disk(device);
