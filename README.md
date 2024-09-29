@@ -1,3 +1,46 @@
+# NEWS FOR SGFS
+### Anyone who has seen this project a little before knows that it is not compatible to open with normal explorers so,
+### I am making it a package and i will be trying to make it avalible on AUR to download and compile, this newer version is also inspired by ReiserFS a little bit, SGFS will have its own utils as a package for the newer version which might be the first official release to the public to make sure to have it tested and to make it usable outside of a specialized file explorer, little bit of SGFS-Utils(this version of the readme is avalible here for only a bit, SGFS-Utils will have its own repo soon and right now the utils will be in the folder SGFS_UTILS:
+
+# SGFS Utils
+
+`sgfs-utils` is a package that provides utilities for managing the SGFS filesystem and SGPT partition table. Inspired by the efficiency of ReiserFS and designed with a unique SGPT partition table, SGFS offers fast file operations and robust filesystem utilities for Linux systems.
+
+### Features:
+
+1. **SGFS Filesystem**:
+   - SGFS is a custom filesystem inspired by the efficiency of ReiserFS.
+   - Optimized for both small and large file operations with a focus on performance.
+   - Supports journaling for data integrity.
+
+2. **SGPT Partition Table**:
+   - SGPT (Szymon Grajner Partition Table) is a unique partition table format specifically designed to work efficiently with SGFS.
+   - Unlike DOS or GPT, SGPT is structured to avoid misidentification by tools like `mkfs`.
+
+3. **FUSE Integration**:
+   - The package includes a robust FUSE implementation, allowing SGFS to be mounted and used with standard file explorers like Dolphin, Nautilus, and others.
+   - Supports file operations such as create, read, write, copy, cut, delete, and rename within file explorers.
+
+4. **`mkfs.sgfs` Utility**:
+   - Easily format any disk to SGFS using the `mkfs.sgfs` command.
+   - Automatically sets up the SGPT partition table and initializes the SGFS filesystem.
+
+5. **`sgfs-convert` Utility**:
+   - (This utility is used if mkfs.sgfs does not work i guess)
+   - Convert existing filesystems (e.g., ext4, FAT32) to SGFS.
+   - Convert partition tables (e.g., DOS, GPT) to SGPT without losing data.
+   - Ensures a smooth migration to SGFS for existing disks.
+
+6. **Compatibility with System Utilities**:
+   - Once installed, the package allows tools like `mkfs`, `mount`, and `fsck` to recognize SGFS, providing native-like integration into Linux systems.
+   - The utilities integrate seamlessly into the system, making SGFS available just like other filesystems (ext4, XFS, etc.).
+
+7. **Easy Installation via AUR**:
+   - Available for Arch Linux users through the AUR as `sgfs-utils`.
+   - Simply install with `makepkg -si` or `makepkg -i` and get started with SGFS on your system.
+## Now back to the original readme:
+
+
 # SGFS
 SGFS is a experimental FS made by me, its for my private use but why not share it, here is the source for the formatter to SGFS and a simple file explorer which can mount SGFS disks and manage them, the explorer is also usable as a normal one.
 
